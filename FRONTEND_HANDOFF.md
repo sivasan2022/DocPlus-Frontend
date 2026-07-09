@@ -1,6 +1,6 @@
-# MedTrace AI Frontend Handoff
+# DocPlus+ Frontend Handoff
 
-Date: 2026-07-08
+Date: 2026-07-09
 
 ## Current Frontend State
 
@@ -11,6 +11,7 @@ Primary files:
 - `src/App.jsx` - page components, routing, backend response normalization, shared report state, abort guards, and graph rendering.
 - `src/api.js` - shared API helpers for `GET`, `POST`, `DELETE`, URL joining, and backend error details.
 - `src/styles.css` - layout, cards, forms, tables, report views, and Neo4j NVL graph container styling.
+- `src/assets/docplus-logo-light.png` / `src/assets/docplus-logo-dark.png` - transparent DocPlus+ sidebar logos for light and dark themes.
 - `package.json` / `pnpm-lock.yaml` / `pnpm-workspace.yaml` - frontend dependencies, including `@neo4j-nvl/react`.
 
 ## State And Data Flow
@@ -24,8 +25,6 @@ Primary files:
 - Audit Shadow, Cybersecurity, and Reports do not call their own mock/scan/report endpoints. They render from `lastReport`.
 - Complaint draft text is persisted under `medtrace-complaint-draft`.
 - Digital Twin backend payloads are cached per device under `medtrace-twin-cache`.
-- Traceability backend payloads are cached per device under `medtrace-traceability-cache`.
-- A new complaint investigation invalidates that device's Traceability cache so the next Traceability visit refreshes once.
 
 ## Page Details
 
@@ -72,27 +71,6 @@ Primary files:
   - `GET /graph/device/{device_id}/score`
   - `GET /graph/device/{device_id}/kpis`
 
-### Traceability
-
-- Fixed the data-fetch issue.
-- Root cause: the backend can return a top-level array from `GET /graph/requirements/matrix/{device_id}`, while the old frontend only looked for object keys such as `matrix`, `requirements`, `rows`, or `data`.
-- Uses cached traceability data on page visit/device change when available.
-- Calls the four Traceability endpoints only on first view for an uncached device, after complaint cache invalidation, or when the user clicks Refresh.
-- Removed the Firmware What-If / Ripple Propagation card and its backend action.
-- Shows Live, Partially refreshed, Cached, or Waiting status next to Refresh.
-- Now supports top-level arrays and object-wrapped matrix rows.
-- Fallback row order:
-  - requirements matrix
-  - CAPA context
-  - evidence freshness
-- Surfaces per-endpoint failures instead of swallowing them into a generic empty state.
-- Warns if the selected `device_id` is not present in `/agents/capabilities`.
-- Endpoints:
-  - `GET /graph/requirements/matrix/{device_id}`
-  - `GET /graph/device/{device_id}/evidence-freshness`
-  - `GET /graph/traceability/orphans`
-  - `GET /graph/device/{device_id}/capa-context`
-
 ### Audit Shadow
 
 - Removed Run Mock Audit.
@@ -116,11 +94,16 @@ Primary files:
 - Reads from the latest Complaint Investigation response only.
 - Shows PDF filename/download URL, report metadata, executive summary, live source provenance, evidence class breakdown, and raw latest response.
 
+### Removed Pages
+
+- Graph Explorer is removed from navigation and routing.
+- Traceability is removed from navigation and routing.
+- Traceability-specific cache keys, parsing helpers, route cases, and endpoint calls were removed from `src/App.jsx`.
+
 ## Hardening Added
 
-- `AbortController` and request-id guards on dashboard, digital twin, and traceability refreshes.
-- Cache-first Digital Twin and Traceability page visits to avoid repeated backend calls.
-- Traceability cache invalidation when a new complaint report arrives for the same device.
+- `AbortController` and request-id guards on dashboard and digital twin refreshes.
+- Cache-first Digital Twin page visits to avoid repeated backend calls.
 - App-level investigation request state with a persistent Shell status badge.
 - Direct GET requests without frontend API timeout timers.
 - Page-level error boundary so an unexpected backend payload cannot blank the whole app.

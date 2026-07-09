@@ -2,3 +2,7 @@ node_modules/
 dist/
 .env
 *.log
+new_tst.txt
+DOCPLUS_COMPLETE_PROJECT_DOCUMENTATION.md
+FRONTEND_HANDOFF.md
+README.md

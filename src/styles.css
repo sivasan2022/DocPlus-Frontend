@@ -127,40 +127,42 @@ a {
 }
 
 .brand {
-  display: grid;
-  grid-template-columns: 58px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 7px;
+  width: 100%;
   min-width: 0;
-}
-
-.brand strong {
-  display: block;
-  font-size: 18px;
-  letter-spacing: 0;
 }
 
 .brand small {
   display: block;
-  margin-top: 2px;
+  width: min(218px, 100%);
+  margin-top: 0;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .logo-slot {
-  width: 58px;
-  height: 58px;
+  width: min(218px, 100%);
+  height: 64px;
   display: grid;
   place-items: center;
-  border: 1px dashed color-mix(in srgb, var(--gold) 60%, var(--line));
-  border-radius: 8px;
-  background: linear-gradient(145deg, var(--gold-soft), transparent);
-  color: var(--gold);
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.logo-slot span {
-  font-size: 10px;
-  color: var(--muted);
+.logo-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
 }
 
 .sidebar nav {
@@ -1352,7 +1354,7 @@ select:focus {
 
 
 /* ============================================================
-   MedTrace AI — Motion Layer
+   DocPlus+ Motion Layer
    Subtle, professional animation pass. Hooks into existing
    class names from App.jsx — no component changes required,
    except one (documented at the bottom of this file).

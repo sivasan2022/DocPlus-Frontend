@@ -1,6 +1,6 @@
-# MedTrace AI Frontend
+# DocPlus+ Frontend
 
-React + Tailwind CSS frontend for the MedTrace AI FastAPI backend.
+React + Tailwind CSS frontend for the DocPlus+ FastAPI backend.
 
 ## Run
 

@@ -776,7 +776,7 @@ function Shell({ children, activePage, setActivePage, theme, setTheme, apiBase, 
             <span>Logo</span>
           </div>
           <div>
-            <strong>MedTrace AI</strong>
+            <strong>DocPlus+</strong>
             <small>Audit-ready intelligence</small>
           </div>
         </div>

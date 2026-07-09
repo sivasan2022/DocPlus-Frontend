@@ -1,11 +1,12 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InteractiveNvlWrapper } from "@neo4j-nvl/react";
 import { DEFAULT_API_BASE, getJson, joinUrl, postJson } from "./api";
+import docPlusLogoDark from "./assets/docplus-logo-dark.png";
+import docPlusLogoLight from "./assets/docplus-logo-light.png";
 const NAV_ITEMS = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard" },
   { id: "complaint", label: "Complaint Investigation", icon: "clinical_notes" },
   { id: "twin", label: "Digital Twin", icon: "hub" },
-  { id: "traceability", label: "Traceability", icon: "fact_check" },
   { id: "audit", label: "Audit Shadow", icon: "visibility" },
   { id: "cybersecurity", label: "Cybersecurity", icon: "security" },
   { id: "reports", label: "Reports", icon: "summarize" },
@@ -14,7 +15,6 @@ const NAV_ITEMS = [
 const DASHBOARD_CACHE_KEY = "medtrace-dashboard-cache";
 const COMPLAINT_DRAFT_KEY = "medtrace-complaint-draft";
 const TWIN_CACHE_KEY = "medtrace-twin-cache";
-const TRACEABILITY_CACHE_KEY = "medtrace-traceability-cache";
 const DASHBOARD_INITIAL_DATA = {
   health: { status: "ok", nodes: 870, edges: 2981 },
   documents: { graph_nodes: 870, graph_edges: 2981, vector: { provider: "chromadb" } },
@@ -261,63 +261,6 @@ function reportCount(report, paths) {
   if (typeof value === "number") return value;
   if (Array.isArray(value)) return value.length;
   return undefined;
-}
-
-function extractTraceabilityRows(matrixPayload, capaContext, freshnessPayload) {
-  const directRows = Array.isArray(matrixPayload)
-    ? matrixPayload
-    : asArray(matrixPayload?.matrix || matrixPayload?.requirements || matrixPayload?.rows || matrixPayload?.data);
-
-  const normalizedDirect = directRows
-    .filter((row) => row && typeof row === "object" && !row._truncated)
-    .map((row, index) => ({
-      requirement_id: row.requirement_id || row.id || row.requirement || `Requirement ${index + 1}`,
-      requirement: row.requirement || row.requirement_text || row.text || "",
-      evidence: row.test_id || row.evidence || row.linked_test || row.tests?.[0]?.id || "",
-      status: row.test_result || row.status || row.readiness || row.tests?.[0]?.result || "",
-      firmware: row.firmware_tested || row.current_firmware || row.tests?.[0]?.firmware_tested || "",
-      risk: asArray(row.risk_ids || row.risks).join(", "),
-      score: percentValue(row.score || row.readiness_score || row.coverage) ?? scoreFromStatus(row.test_result || row.status || row.readiness),
-      raw: row,
-    }));
-
-  if (normalizedDirect.length) return normalizedDirect;
-
-  const contextRows = asArray(capaContext?.requirements)
-    .filter((row) => row && typeof row === "object")
-    .map((row, index) => {
-      const firstTest = asArray(row.tests)[0] || {};
-      const risks = asArray(row.risks).map((risk) => risk.id || risk.risk_id || risk.hazard).filter(Boolean);
-      return {
-        requirement_id: row.requirement_id || row.id || `Requirement ${index + 1}`,
-        requirement: row.requirement_text || row.requirement || "",
-        evidence: firstTest.id || firstTest.name || "",
-        status: firstTest.result || firstTest.status || "",
-        firmware: firstTest.firmware_tested || "",
-        risk: risks.join(", "),
-        score: percentValue(firstTest.confidence_score) ?? scoreFromStatus(firstTest.result || firstTest.status),
-        raw: row,
-      };
-    });
-
-  if (contextRows.length) return contextRows;
-
-  const freshnessRows = Array.isArray(freshnessPayload)
-    ? freshnessPayload
-    : asArray(freshnessPayload?.stale || freshnessPayload?.stale_links || freshnessPayload?.items);
-
-  return freshnessRows
-    .filter((row) => row && typeof row === "object" && !row._truncated)
-    .map((row, index) => ({
-      requirement_id: row.requirement_id || row.id || `Freshness ${index + 1}`,
-      requirement: row.requirement || "",
-      evidence: row.test_id || row.evidence || "",
-      status: row.status || "",
-      firmware: row.firmware_tested || row.current_firmware || "",
-      risk: "",
-      score: scoreFromStatus(row.status),
-      raw: row,
-    }));
 }
 
 function Icon({ name, className = "" }) {
@@ -901,19 +844,16 @@ function FindingCard({ finding }) {
 
 function Shell({ children, activePage, setActivePage, theme, setTheme, apiBase, setApiBase, backendOk, investigationRunning }) {
   const activeItem = NAV_ITEMS.find((item) => item.id === activePage) || NAV_ITEMS[0];
+  const brandLogo = theme === "dark" ? docPlusLogoDark : docPlusLogoLight;
 
   return (
     <div className="app-shell" data-theme={theme}>
       <aside className="sidebar">
         <div className="brand">
           <div className="logo-slot">
-            <Icon name="add_photo_alternate" />
-            <span>Logo</span>
+            <img src={brandLogo} alt="DocPlus+ logo" />
           </div>
-          <div>
-            <strong>MedTrace AI</strong>
-            <small>Audit-ready intelligence</small>
-          </div>
+          <small>Audit-ready intelligence</small>
         </div>
 
         <nav>
@@ -1429,194 +1369,6 @@ function DigitalTwin({ apiBase, deviceId }) {
   );
 }
 
-function Traceability({ apiBase, deviceId, devices = [] }) {
-  const [matrix, setMatrix] = useState(null);
-  const [freshness, setFreshness] = useState(null);
-  const [orphans, setOrphans] = useState(null);
-  const [capaContext, setCapaContext] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [endpointErrors, setEndpointErrors] = useState({});
-  const [source, setSource] = useState("empty");
-  const requestRef = useRef(0);
-  const abortRef = useRef(null);
-
-  async function loadTraceability(force = false) {
-    if (!deviceId) {
-      setMatrix(null);
-      setFreshness(null);
-      setOrphans(null);
-      setCapaContext(null);
-      setError("No backend device is selected yet. Load capabilities or choose a device before checking traceability.");
-      setLoading(false);
-      setSource("empty");
-      return;
-    }
-
-    const cacheStore = readStorageJson(TRACEABILITY_CACHE_KEY, {});
-    const cached = cacheStore[deviceId];
-    if (cached && !force) {
-      setMatrix(cached.matrix ?? null);
-      setFreshness(cached.freshness ?? null);
-      setOrphans(cached.orphans ?? null);
-      setCapaContext(cached.capaContext ?? null);
-      setSource("cached");
-      setError("");
-      setEndpointErrors({});
-      setLoading(false);
-      return;
-    }
-
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const requestId = requestRef.current + 1;
-    requestRef.current = requestId;
-    setLoading(true);
-    setError("");
-    setEndpointErrors({});
-
-    const id = encodeURIComponent(deviceId);
-    const endpointMap = {
-      matrix: `/graph/requirements/matrix/${id}`,
-      "evidence-freshness": `/graph/device/${id}/evidence-freshness`,
-      orphans: "/graph/traceability/orphans",
-      "capa-context": `/graph/device/${id}/capa-context`,
-    };
-    const endpointEntries = Object.entries(endpointMap);
-    const responses = await Promise.allSettled(
-      endpointEntries.map(async ([key, path]) => ({ key, value: await getJson(apiBase, path, { signal: controller.signal }) })),
-    );
-    if (controller.signal.aborted || requestId !== requestRef.current) return;
-    const failures = {};
-    const next = { matrix: null, freshness: null, orphans: null, capaContext: null };
-    responses.forEach((response, index) => {
-      if (response.status === "fulfilled") {
-        const { key, value } = response.value;
-        if (key === "matrix") next.matrix = value;
-        if (key === "evidence-freshness") next.freshness = value;
-        if (key === "orphans") next.orphans = value;
-        if (key === "capa-context") next.capaContext = value;
-      } else if (response.reason?.name !== "AbortError") {
-        failures[endpointEntries[index][0]] = response.reason?.message || String(response.reason);
-      }
-    });
-    setMatrix(next.matrix);
-    setFreshness(next.freshness);
-    setOrphans(next.orphans);
-    setCapaContext(next.capaContext);
-    setEndpointErrors(failures);
-    setSource(Object.keys(failures).length ? "partial" : "live");
-    if (Object.keys(failures).length === 0) {
-      writeStorageJson(TRACEABILITY_CACHE_KEY, { ...cacheStore, [deviceId]: next });
-    }
-    if (responses.every((response) => response.status === "rejected")) {
-      setError(`Traceability endpoints failed: ${Object.values(failures).join("; ")}`);
-    }
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    loadTraceability(false);
-    return () => abortRef.current?.abort();
-  }, [apiBase, deviceId]);
-
-  const rows = extractTraceabilityRows(matrix, capaContext, freshness).slice(0, 12);
-  const staleRows = Array.isArray(freshness)
-    ? freshness.filter((row) => row && typeof row === "object" && !row._truncated)
-    : asArray(freshness?.stale || freshness?.stale_links || freshness?.items);
-  const staleValue = firstValue({ freshness, capaContext }, [
-    "freshness.stale_count",
-    "freshness.stale_links",
-    "capaContext.stale_or_review_test_count",
-  ]);
-  const staleCount = Array.isArray(staleValue) ? staleValue.length : staleValue;
-  const orphanCount = hasValue(firstValue({ orphans }, ["orphans.count"]))
-    ? firstValue({ orphans }, ["orphans.count"])
-    : orphans
-      ? asArray(orphans?.orphans || orphans?.nodes).length
-      : undefined;
-  const heatRows = rows
-    .map((row, index) => ({
-      label: row.requirement_id || `Row ${index + 1}`,
-      value: row.score,
-    }))
-    .filter((row) => row.label && hasValue(row.value));
-
-    
-
-  const mismatchMessage =
-    devices.length && deviceId && !devices.some((device) => device.id === deviceId)
-      ? `Selected device ${deviceId} was not found in /agents/capabilities.`
-      : "";
-  const endpointErrorMessage = Object.keys(endpointErrors).length
-    ? `Traceability endpoint failures: ${Object.entries(endpointErrors)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join("; ")}`
-    : "";
-
-  return (
-    <div className="page-grid">
-      <ErrorBanner message={[mismatchMessage, error, endpointErrorMessage].filter(Boolean).join(" ")} />
-      <WaitingProgress active={loading} label="Checking traceability integrity" />
-      <div className="two-col">
-        <Heatmap title="Requirement Coverage" rows={heatRows} />
-      </div>
-      <div className="two-col">
-        <Card>
-          <SectionTitle
-            eyebrow="Matrix"
-            title="Requirement traceability"
-            action={
-              <div className="topbar-actions">
-                <StatusPill
-                  ok={source === "live" || source === "partial" || source === "cached"}
-                  label={source === "live" ? "Live data" : source === "partial" ? "Partially refreshed" : source === "cached" ? "Cached values" : "Waiting for data"}
-                />
-                <Button icon="refresh" onClick={() => loadTraceability(true)}>Refresh</Button>
-              </div>
-            }
-          />
-          {rows.length ? (
-            <div className="data-table">
-              <div className="table-head">
-                <span>Requirement</span>
-                <span>Evidence</span>
-                <span>Status</span>
-              </div>
-              {rows.map((row, index) => (
-                <div key={row.requirement_id || row.label || index}>
-                  <span>{formatValue(row.requirement_id)}</span>
-                  <span>{formatValue(row.evidence || row.requirement)}</span>
-                  <strong>{formatValue(titleCase(row.status || row.firmware))}</strong>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState icon="fact_check" title="No traceability rows returned">
-              Refresh after the requirements matrix endpoint returns rows for the selected device.
-            </EmptyState>
-          )}
-        </Card>
-        <Card>
-          <SectionTitle eyebrow="Data quality" title="Orphans and stale links" />
-          <div className="summary-grid single">
-            <div>
-              <span>Stale links</span>
-              <strong>{formatValue(hasValue(staleCount) ? staleCount : staleRows.length || undefined)}</strong>
-            </div>
-            <div>
-              <span>Orphan nodes</span>
-              <strong>{formatValue(orphanCount)}</strong>
-            </div>
-          </div>
-          <JsonPanel data={{ matrix, capaContext, freshness, orphans }} title="Traceability payload" />
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 function AuditShadow({ lastReport, deviceId }) {
   const summary = lastReport?.summary || {};
   const findings = extractReportAuditFindings(lastReport);
@@ -1904,14 +1656,6 @@ export default function App() {
   const setLastReport = useCallback((report) => {
     setLastReportState(report);
     localStorage.setItem("medtrace-last-report", JSON.stringify(report));
-    const deviceIdFromReport = report?.summary?.device_id;
-    if (deviceIdFromReport) {
-      const cache = readStorageJson(TRACEABILITY_CACHE_KEY, {});
-      if (cache[deviceIdFromReport]) {
-        delete cache[deviceIdFromReport];
-        writeStorageJson(TRACEABILITY_CACHE_KEY, cache);
-      }
-    }
   }, []);
 
   const runInvestigation = useCallback(async (complaintText, options = {}) => {
@@ -1954,8 +1698,6 @@ export default function App() {
         return <ComplaintInvestigation {...props} />;
       case "twin":
         return <DigitalTwin {...props} />;
-      case "traceability":
-        return <Traceability {...props} />;
       case "audit":
         return <AuditShadow {...props} />;
       case "cybersecurity":
