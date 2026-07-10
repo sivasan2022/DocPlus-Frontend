@@ -1821,3 +1821,200 @@ select:focus {
 .gauge-label span {
   display: block;
 }
+
+
+
+.waiting-note {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  background: rgba(212, 168, 47, 0.12);
+  border: 1px solid rgba(212, 168, 47, 0.28);
+  color: var(--text, #f8fafc);
+}
+
+.waiting-note .material-symbols-outlined {
+  font-size: 20px;
+  margin-top: 1px;
+}
+
+.perf-bar-gold { background: var(--gold, #d4a82f); }
+.perf-bar-blue { background: var(--blue, #38bdf8); }
+.perf-bar-green { background: var(--green, #22c55e); }
+.perf-bar-red { background: var(--red, #f43f5e); }
+.perf-bar-a { background: var(--gold, #d4a82f); }
+.perf-bar-b { background: var(--blue, #38bdf8); }
+.perf-legend-a::before, .perf-legend-b::before {
+  content: ""; display: inline-block; width: 10px; height: 10px;
+  border-radius: 2px; margin-right: 6px;
+}
+.perf-legend-a::before { background: var(--gold, #d4a82f); }
+.perf-legend-b::before { background: var(--blue, #38bdf8); }
+ 
+.radar-wrap { display: flex; gap: 1.5rem; align-items: center; flex-wrap: wrap; }
+.radar-svg { flex: 1 1 280px; min-width: 260px; }
+.radar-ring { fill: none; stroke: rgba(148,163,184,0.25); stroke-width: 1; }
+.radar-axis { stroke: rgba(148,163,184,0.25); stroke-width: 1; }
+.radar-shape { fill: rgba(212,168,47,0.25); stroke: var(--gold, #d4a82f); stroke-width: 2; }
+.radar-point { fill: var(--gold, #d4a82f); }
+.radar-label { font-size: 9px; fill: currentColor; opacity: 0.75; }
+.radar-score-list { flex: 1 1 160px; display: flex; flex-direction: column; gap: 0.35rem; }
+.radar-score-row { display: flex; justify-content: space-between; font-size: 0.85rem; }
+
+
+
+
+
+
+.team-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.25rem;
+}
+ 
+.team-card-flip {
+  perspective: 1200px;
+  height: 260px;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: team-card-in 0.6s ease forwards;
+  animation-delay: var(--flip-delay, 0ms);
+}
+ 
+@keyframes team-card-in {
+  to { opacity: 1; transform: translateY(0); }
+}
+ 
+.team-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-style: preserve-3d;
+}
+ 
+.team-card-flip:hover .team-card-inner,
+.team-card-flip:focus-within .team-card-inner {
+  transform: rotateY(180deg) translateY(-4px);
+}
+ 
+.team-card-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(212, 168, 47, 0.25);
+  padding: 1.5rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  /* Explicit per-theme colors below — do NOT rely on inherited text color,
+     since that's what caused invisible names in light mode. */
+  background: #14181f;
+  color: #f4f1ea;
+}
+ 
+[data-theme="light"] .team-card-face {
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid rgba(212, 168, 47, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+ 
+.team-card-face h3 {
+  color: inherit;
+}
+ 
+.team-flip-hint,
+.team-back-meta span {
+  color: inherit;
+}
+ 
+.team-card-front {
+  transition: box-shadow 0.3s ease;
+}
+ 
+.team-card-flip:hover .team-card-front {
+  box-shadow: 0 12px 32px rgba(212, 168, 47, 0.25);
+}
+ 
+.team-card-back {
+  transform: rotateY(180deg);
+  justify-content: space-between;
+}
+ 
+.team-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #d4a82f, #f4d06f);
+  color: #1a1a1a;
+  font-weight: 700;
+  font-size: 1.2rem;
+  margin-bottom: 0.25rem;
+}
+ 
+.team-role-hackathon {
+  color: var(--gold, #d4a82f);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+ 
+.team-flip-hint {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  opacity: 0.6;
+}
+ 
+.team-flip-hint .material-symbols-outlined {
+  font-size: 14px;
+  animation: team-spin 2.4s linear infinite;
+}
+ 
+@keyframes team-spin {
+  to { transform: rotate(360deg); }
+}
+ 
+.team-back-icon {
+  font-size: 28px;
+  color: var(--gold, #d4a82f);
+}
+ 
+.team-back-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+ 
+.team-back-meta div {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+}
+ 
+.team-back-meta span {
+  opacity: 0.65;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+ 
+.team-linkedin-btn {
+  margin-top: 0.25rem;
+}

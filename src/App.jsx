@@ -1,6 +1,8 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { InteractiveNvlWrapper } from "@neo4j-nvl/react";
 import { DEFAULT_API_BASE, getJson, joinUrl, postJson } from "./api";
+import { extractRootCauseFromPdf } from "./pdfRootCause";
+import "./root-cause.css";
 import docPlusLogoDark from "./assets/docplus-logo-dark.png";
 import docPlusLogoLight from "./assets/docplus-logo-light.png";
 const NAV_ITEMS = [
@@ -9,7 +11,10 @@ const NAV_ITEMS = [
   { id: "twin", label: "Digital Twin", icon: "hub" },
   { id: "audit", label: "Audit Shadow", icon: "visibility" },
   { id: "cybersecurity", label: "Cybersecurity", icon: "security" },
+  { id: "performance", label: "Performance", icon: "monitoring" },
   { id: "reports", label: "Reports", icon: "summarize" },
+    { id: "about", label: "About Us", icon: "groups" },
+  
 ];
 
 const DASHBOARD_CACHE_KEY = "medtrace-dashboard-cache";
@@ -366,6 +371,14 @@ function WaitingProgress({ active, label = "Running agent workflow" }) {
             </span>
           ))}
         </div>
+
+        <div className="waiting-note">
+          <Icon name="info" />
+          <span>
+            We have deployed our multi-agent agentic AI on Railway free tier, so due to minimal resources, it takes time. Please wait...
+          </span>
+        </div>
+
       </div>
     </Card>
   );
@@ -842,6 +855,149 @@ function FindingCard({ finding }) {
   );
 }
 
+
+function cleanRootCauseRawValue(value) {
+  return String(value || "")
+    .replace(/\[[^\]]*\]/g, " ")
+    .replace(/\b(?:INFERRED DATA|DEMO DATA|NOT CONTROLLED EVIDENCE|REVIEW REQUIRED)\b/gi, " ")
+    .replace(/\bREQUIRED\]/gi, " ")
+    .replace(/\]/g, " ")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanRootCauseDisplayValue(value) {
+  return formatValue(cleanRootCauseRawValue(value));
+}
+
+function hasUsefulKeyWhyChain(value) {
+  const cleaned = cleanRootCauseRawValue(value);
+  if (!cleaned || cleaned === "--") return false;
+  if (/\bpage\s+\d+\b/i.test(cleaned)) return false;
+  if (/\bconfidential\b/i.test(cleaned)) return false;
+  if (/\bAI\s+draft\b/i.test(cleaned)) return false;
+  return true;
+}
+
+function isNoiseRootCauseRow(row) {
+  const hypothesis = cleanRootCauseRawValue(row?.hypothesis);
+  const keyWhyChain = cleanRootCauseRawValue(row?.key_why_chain || row?.keyWhyChain);
+  const combined = `${hypothesis} ${keyWhyChain}`;
+
+  return /\b(evidence\s+balance|similar\s+incident|cross[-\s]?check|generated\s+by\s+docplus)\b/i.test(combined);
+}
+
+function prepareRootCauseRows(rows = []) {
+  const seenIds = new Set();
+  const inputRows = Array.isArray(rows) ? rows : [];
+  const prepared = [];
+
+  for (const row of inputRows) {
+    const id = cleanRootCauseRawValue(row?.id).toUpperCase();
+    const hypothesis = cleanRootCauseRawValue(row?.hypothesis);
+    const probability = cleanRootCauseRawValue(row?.probability);
+    const keyWhyChain = cleanRootCauseRawValue(row?.key_why_chain || row?.keyWhyChain);
+
+    if (!id) continue;
+    if (seenIds.has(id)) continue;
+    if (!hypothesis) continue;
+    if (!/\d+(?:\.\d+)?\s*%/.test(probability)) continue;
+    if (!hasUsefulKeyWhyChain(keyWhyChain)) continue;
+    if (isNoiseRootCauseRow({ hypothesis, key_why_chain: keyWhyChain })) continue;
+
+    seenIds.add(id);
+    prepared.push({
+      id,
+      hypothesis,
+      probability,
+      key_why_chain: keyWhyChain,
+    });
+  }
+
+  return prepared;
+}
+
+function RootCauseTable({ rows = [], error = "", sectionText = "" }) {
+  const safeRows = prepareRootCauseRows(rows);
+
+  if (error) {
+    return (
+      <Card>
+        <SectionTitle eyebrow="Extracted from PDF" title="Root Cause Analysis" />
+        <EmptyState icon="plagiarism" title="Root cause extraction failed">
+          {error}
+        </EmptyState>
+      </Card>
+    );
+  }
+
+  if (!safeRows.length && !sectionText) {
+    return (
+      <Card>
+        <SectionTitle eyebrow="Extracted from PDF" title="Root Cause Analysis" />
+        <EmptyState icon="plagiarism" title="No complete root cause cards found">
+          Run Complaint Investigation again. Cards are shown only when ID, Hypothesis, Probability, and Key Why Chain are all found.
+        </EmptyState>
+      </Card>
+    );
+  }
+
+  if (!safeRows.length && sectionText) {
+    return (
+      <Card>
+        <SectionTitle eyebrow="Extracted from PDF" title="Root Cause Analysis" />
+        <EmptyState icon="plagiarism" title="No complete root cause cards found">
+          The PDF was parsed, but no complete root cause row with ID, Hypothesis, Probability, and Key Why Chain was found.
+        </EmptyState>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="root-cause-panel">
+      <SectionTitle eyebrow="Case Data" title="Root Cause Analysis">
+      </SectionTitle>
+
+      <div className="root-cause-card-grid">
+        {safeRows.map((row, index) => {
+          const id = cleanRootCauseDisplayValue(row.id);
+          const hypothesis = cleanRootCauseDisplayValue(row.hypothesis);
+          const probability = cleanRootCauseDisplayValue(row.probability);
+          const keyWhyChain = cleanRootCauseDisplayValue(row.key_why_chain || row.keyWhyChain);
+
+          return (
+            <article className="root-cause-card" key={row.id || `root-cause-${index}`}>
+              <div className="root-cause-card-head">
+                <div>
+                  <span>ID</span>
+                  <strong>{id}</strong>
+                </div>
+                <div className="root-cause-probability">
+                  <span>Probability</span>
+                  <strong>{probability}</strong>
+                </div>
+              </div>
+
+              <div className="root-cause-card-body">
+                <div className="root-cause-field">
+                  <span>Hypothesis</span>
+                  <p>{hypothesis}</p>
+                </div>
+
+                <div className="root-cause-field">
+                  <span>Key Why Chain</span>
+                  <p>{keyWhyChain}</p>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
+
 function Shell({ children, activePage, setActivePage, theme, setTheme, apiBase, setApiBase, backendOk, investigationRunning }) {
   const activeItem = NAV_ITEMS.find((item) => item.id === activePage) || NAV_ITEMS[0];
   const brandLogo = theme === "dark" ? docPlusLogoDark : docPlusLogoLight;
@@ -853,7 +1009,7 @@ function Shell({ children, activePage, setActivePage, theme, setTheme, apiBase, 
           <div className="logo-slot">
             <img src={brandLogo} alt="DocPlus+ logo" />
           </div>
-          <small>Audit-ready intelligence</small>
+          <small>REGULATORY INTELLIGENCE, TRACED</small>
         </div>
 
         <nav>
@@ -1371,29 +1527,37 @@ function DigitalTwin({ apiBase, deviceId }) {
 
 function AuditShadow({ lastReport, deviceId }) {
   const summary = lastReport?.summary || {};
-  const findings = extractReportAuditFindings(lastReport);
-  const findingCount = reportCount(lastReport, ["summary.audit_findings", "audit_findings"]);
+  const rawRootCauseRows = lastReport?.extracted_from_pdf?.root_cause_table || [];
+  const rootCauseRows = prepareRootCauseRows(rawRootCauseRows);
+  const rootCauseText =
+    lastReport?.extracted_from_pdf?.root_cause_text ||
+    lastReport?.extracted_from_pdf?.root_cause_raw_section ||
+    "";
+  const rootCauseExtractionError = lastReport?.extracted_from_pdf?.extraction_error || "";
+  const rootCauseCount = rootCauseRows.length || undefined;
   const readiness = percentValue(summary.evidence_confidence_score);
   const reportDeviceId = summary.device_id;
   const mismatchMessage =
     reportDeviceId && deviceId && reportDeviceId !== deviceId
-      ? `Showing AuditShadow results for device ${reportDeviceId}, which differs from the currently selected device ${deviceId}. Run a new investigation for ${deviceId} to refresh this data.`
+      ? `Showing Root Cause Analysis for device ${reportDeviceId}, which differs from the currently selected device ${deviceId}. Run a new investigation for ${deviceId} to refresh this data.`
       : "";
 
   return (
     <div className="page-grid">
       <ErrorBanner message={mismatchMessage} />
+
       <section className="audit-runner">
         <div>
           <p className="eyebrow">From latest investigation</p>
-          <h2>Audit Shadow findings from the complaint run.</h2>
+          <h2>Root Cause Analysis from the complaint run.</h2>
           <p>
-            This page reads AuditShadow data returned by Complaint Investigation. Run an investigation first to populate it.
+            This page shows Root Cause Analysis cards extracted from the generated investigation PDF.
           </p>
+
           <div className="summary-grid">
             <div>
-              <span>Findings</span>
-              <strong>{formatValue(findingCount ?? (findings.length || undefined))}</strong>
+              <span>Root cause rows</span>
+              <strong>{formatValue(rootCauseCount)}</strong>
             </div>
             <div>
               <span>Framework</span>
@@ -1401,30 +1565,29 @@ function AuditShadow({ lastReport, deviceId }) {
             </div>
           </div>
         </div>
-        <Gauge value={readiness} label={
-                 <span className="gauge-label">
-      <span>Investigation Evidence</span>
-      <span>Confidence</span>
-    </span>
 
-        } />
+        <Gauge
+          value={readiness}
+          label={
+            <span className="gauge-label">
+              <span>Investigation Evidence</span>
+              <span>Confidence</span>
+            </span>
+          }
+        />
       </section>
+
       {!lastReport ? (
         <EmptyState icon="assignment" title="No investigation response yet">
-          Run Complaint Investigation to fill Audit Shadow with backend response data.
+          Run Complaint Investigation first. After the PDF is generated, this page will show the extracted Root Cause Analysis cards.
         </EmptyState>
-      ) : findings.length ? (
-        <div className="finding-list">
-          {findings.map((finding) => (
-            <FindingCard finding={finding} key={finding.id} />
-          ))}
-        </div>
       ) : (
-        <EmptyState icon="visibility" title="No AuditShadow findings returned">
-          The latest investigation returned an AuditShadow count but no detailed finding rows.
-        </EmptyState>
+        <RootCauseTable
+          rows={rootCauseRows}
+          error={rootCauseExtractionError}
+          sectionText={rootCauseText}
+        />
       )}
-      <JsonPanel data={lastReport} title="Latest investigation response" />
     </div>
   );
 }
@@ -1600,6 +1763,480 @@ function Reports({ apiBase, lastReport }) {
   );
 }
 
+
+
+// ============ COMPONENT CODE STARTS HERE ============
+ 
+const PERF_REPORT = {
+  snapshot: [
+    { label: "Graph Nodes", value: 870 },
+    { label: "Graph Edges", value: 2925 },
+    { label: "API Operations", value: 39 },
+    { label: "M2 Completed Runs", value: 214 },
+    { label: "Runtime Snapshots", value: 1563 },
+    { label: "Agent Steps Captured", value: 403 },
+    { label: "LLM Calls Captured", value: 183 },
+    { label: "Generated PDFs", value: 15 },
+    { label: "SBOM Components", value: 35 },
+    { label: "CVE Findings", value: 7 },
+  ],
+  radar: {
+    title: "MedTrace AI Capability Scorecard",
+    labels: [
+      "Innovation",
+      "Technical Excellence",
+      "Business Impact",
+      "Evidence Grounding",
+      "Workflow Automation",
+      "Scalability",
+      "Demo Readiness",
+      "Regulatory Fit",
+    ],
+    values: [92, 88, 86, 91, 89, 84, 82, 90],
+  },
+  prototypeScale: {
+    title: "Prototype Scale: Graph, Agents, Reports & Cybersecurity Coverage",
+    data: [
+      { label: "Graph Nodes", value: 870 },
+      { label: "Graph Edges", value: 2925 },
+      { label: "M2 Completed Runs", value: 214 },
+      { label: "Agent Steps Captured", value: 403 },
+      { label: "LLM Calls Captured", value: 183 },
+      { label: "Generated PDFs", value: 15 },
+      { label: "SBOM Components", value: 35 },
+      { label: "CVE Findings", value: 7 },
+      { label: "API Operations", value: 39 },
+    ],
+  },
+  agentRuntime: {
+    title: "Measured Average Agent Runtime by Workflow Step",
+    unit: "sec",
+    data: [
+      { label: "Complaint Intake", value: 51.97 },
+      { label: "Root Cause", value: 6.15 },
+      { label: "Firmware Traceability", value: 1.72 },
+      { label: "Evidence Retrieval", value: 2.36 },
+      { label: "Risk Assessment", value: 0.21 },
+      { label: "CAPA Draft", value: 2.68 },
+      { label: "OpenAI Reasoning", value: 57.01 },
+      { label: "AuditShadow", value: 52.4 },
+      { label: "Cybersecurity Scan", value: 39.31 },
+    ],
+  },
+  workflowSavings: {
+    title: "Estimated Manual Workflow Time vs MedTrace AI Assisted Time (minutes)",
+    data: [
+      { label: "Complaint Triage", manual: 120, medtrace: 12 },
+      { label: "Evidence Trace Review", manual: 180, medtrace: 15 },
+      { label: "Root Cause Drafting", manual: 90, medtrace: 8 },
+      { label: "Risk/RPN Prep", manual: 60, medtrace: 4 },
+      { label: "CAPA Package", manual: 240, medtrace: 25 },
+      { label: "Firmware Impact Review", manual: 90, medtrace: 8 },
+      { label: "Audit Gap Check", manual: 180, medtrace: 10 },
+      { label: "Report Assembly", manual: 300, medtrace: 5 },
+    ],
+  },
+  businessImpactScores: {
+    title: "Business Impact Score by Area",
+    data: [
+      { label: "Complaint Speed", value: 92 },
+      { label: "Audit Visibility", value: 90 },
+      { label: "CAPA Confidence", value: 86 },
+      { label: "Firmware Risk Detection", value: 88 },
+      { label: "Cybersecurity Visibility", value: 78 },
+      { label: "Report Automation", value: 94 },
+      { label: "Integration Readiness", value: 87 },
+      { label: "Reviewer Support", value: 91 },
+    ],
+  },
+  llmTokens: {
+    title: "Average LLM Token Usage by Agent Task",
+    data: [
+      { label: "Complaint Intake", prompt: 2800.3, completion: 821.5 },
+      { label: "Symptom Classification", prompt: 1342.5, completion: 520.5 },
+      { label: "Root Cause", prompt: 5215.3, completion: 643.2 },
+      { label: "Complaint Final Reasoning", prompt: 4746.6, completion: 3372.0 },
+      { label: "Audit Final Reasoning", prompt: 5527.0, completion: 3054.0 },
+    ],
+  },
+  cveSeverity: {
+    title: "SBOM/NVD CVE Findings by Severity",
+    data: [
+      { label: "Critical", value: 0 },
+      { label: "High", value: 2 },
+      { label: "Medium", value: 5 },
+      { label: "Low", value: 0 },
+    ],
+  },
+  graphComposition: {
+    title: "Knowledge Graph Node Composition",
+    data: [
+      { label: "Test", value: 130 },
+      { label: "Requirement", value: 120 },
+      { label: "Complaint", value: 115 },
+      { label: "Risk", value: 110 },
+      { label: "CAPA", value: 105 },
+      { label: "RiskControl", value: 100 },
+      { label: "SoftwareRequirement", value: 100 },
+      { label: "TestRun", value: 100 },
+      { label: "TestCase", value: 100 },
+      { label: "Evidence", value: 34 },
+      { label: "ReferenceKnowledge", value: 24 },
+      { label: "SourceDocument", value: 16 },
+    ],
+  },
+  judgeMetrics: [
+    { claim: "Graph-backed regulatory intelligence", value: "870 nodes, 2,925 edges" },
+    { claim: "Working API platform", value: "39 API operations" },
+    { claim: "Real agent workflow history", value: "214 completed M2 runs" },
+    { claim: "Runtime observability", value: "403 captured agent steps" },
+    { claim: "LLM usage measured, not hidden", value: "183 captured LLM calls" },
+    { claim: "Report generation works", value: "15 generated PDFs" },
+    { claim: "Cybersecurity/SBOM coverage", value: "35 SBOM components, 7 CVE findings" },
+    { claim: "Estimated manual workflow reduction", value: "89.6% to 98.3% depending on workflow" },
+  ],
+};
+ 
+// Simple horizontal bar chart row set (mirrors the existing BarChart look/feel).
+function PerfBarChart({ title, subtitle, data, unit = "", color = "gold" }) {
+  const max = Math.max(1, ...data.map((item) => Number(item.value) || 0));
+  return (
+    <Card>
+      <SectionTitle eyebrow="Static report data" title={title}>
+        {subtitle}
+      </SectionTitle>
+      <div className="bar-chart">
+        {data.map((item) => (
+          <div className="bar-row" key={item.label}>
+            <span>{item.label}</span>
+            <div>
+              <i
+                className={`perf-bar-${color}`}
+                style={{ width: `${(Number(item.value) / max) * 100}%` }}
+              />
+            </div>
+            <strong>
+              {item.value}
+              {unit}
+            </strong>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+ 
+// Two-series grouped bar chart (manual vs. medtrace, or prompt vs. completion tokens).
+function PerfGroupedBarChart({ title, subtitle, data, seriesA, seriesB }) {
+  const max = Math.max(1, ...data.flatMap((item) => [Number(item[seriesA.key]) || 0, Number(item[seriesB.key]) || 0]));
+  return (
+    <Card>
+      <SectionTitle eyebrow="Static report data" title={title}>
+        {subtitle}
+      </SectionTitle>
+      <div className="chip-list" style={{ marginBottom: "0.75rem" }}>
+        <span className="perf-legend-a">{seriesA.label}</span>
+        <span className="perf-legend-b">{seriesB.label}</span>
+      </div>
+      <div className="bar-chart">
+        {data.map((item) => (
+          <div key={item.label} style={{ marginBottom: "0.6rem" }}>
+            <div className="bar-row">
+              <span>{item.label}</span>
+              <div>
+                <i className="perf-bar-a" style={{ width: `${(Number(item[seriesA.key]) / max) * 100}%` }} />
+              </div>
+              <strong>{item[seriesA.key]}</strong>
+            </div>
+            <div className="bar-row">
+              <span />
+              <div>
+                <i className="perf-bar-b" style={{ width: `${(Number(item[seriesB.key]) / max) * 100}%` }} />
+              </div>
+              <strong>{item[seriesB.key]}</strong>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+ 
+// SVG radar / spider chart for the capability scorecard.
+function RadarChart({ title, labels, values, size = 320 }) {
+  const center = size / 2;
+  const radius = size * 0.36;
+  const angleStep = (Math.PI * 2) / labels.length;
+ 
+  const pointAt = (index, value) => {
+    const angle = angleStep * index - Math.PI / 2;
+    const r = (Math.max(0, Math.min(100, value)) / 100) * radius;
+    return [center + r * Math.cos(angle), center + r * Math.sin(angle)];
+  };
+ 
+  const polygonPoints = values.map((value, index) => pointAt(index, value).join(",")).join(" ");
+  const rings = [25, 50, 75, 100];
+ 
+  return (
+    <Card>
+      <SectionTitle eyebrow="Static report data" title={title}>
+        Scale is 0 to 100 across eight capability dimensions.
+      </SectionTitle>
+      <div className="radar-wrap">
+        <svg viewBox={`0 0 ${size} ${size}`} width="100%" height={size} className="radar-svg">
+          {rings.map((ring) => (
+            <polygon
+              key={ring}
+              points={labels.map((_, index) => pointAt(index, ring).join(",")).join(" ")}
+              className="radar-ring"
+            />
+          ))}
+          {labels.map((_, index) => {
+            const [x, y] = pointAt(index, 100);
+            return <line key={index} x1={center} y1={center} x2={x} y2={y} className="radar-axis" />;
+          })}
+          <polygon points={polygonPoints} className="radar-shape" />
+          {values.map((value, index) => {
+            const [x, y] = pointAt(index, value);
+            return <circle key={index} cx={x} cy={y} r={4} className="radar-point" />;
+          })}
+          {labels.map((label, index) => {
+            const [x, y] = pointAt(index, 116);
+            return (
+              <text key={label} x={x} y={y} textAnchor="middle" dominantBaseline="middle" className="radar-label">
+                {label}
+              </text>
+            );
+          })}
+        </svg>
+        <div className="radar-score-list">
+          {labels.map((label, index) => (
+            <div key={label} className="radar-score-row">
+              <span>{label}</span>
+              <strong>{values[index]}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+ 
+function PerformanceAnalysis() {
+  const r = PERF_REPORT;
+  return (
+    <div className="page-grid">
+      <section className="hero-band">
+        <div>
+          <p className="eyebrow">Static report · pitch deck ready</p>
+          <h2>Performance and business impact, in one place.</h2>
+          <p>
+            Measured prototype telemetry (graph, agents, LLM calls, reports, cybersecurity) alongside
+            modeled business-impact estimates for judge Q&amp;A and demo storytelling.
+          </p>
+        </div>
+      </section>
+ 
+      <div className="metrics-grid">
+        {r.snapshot.slice(0, 4).map((metric) => (
+          <MetricCard
+            key={metric.label}
+            icon="monitoring"
+            label={metric.label}
+            value={metric.value.toLocaleString()}
+            detail="Measured prototype data"
+          />
+        ))}
+      </div>
+      <div className="metrics-grid">
+        {r.snapshot.slice(4).map((metric) => (
+          <MetricCard
+            key={metric.label}
+            icon="insights"
+            label={metric.label}
+            value={metric.value.toLocaleString()}
+            detail="Measured prototype data"
+            tone="blue"
+          />
+        ))}
+      </div>
+ 
+      <div className="two-col">
+        <RadarChart title={r.radar.title} labels={r.radar.labels} values={r.radar.values} />
+        <PerfBarChart
+          title={r.prototypeScale.title}
+          subtitle="How much the prototype already contains."
+          data={r.prototypeScale.data}
+          color="gold"
+        />
+      </div>
+ 
+      <div className="two-col">
+        <PerfBarChart
+          title={r.agentRuntime.title}
+          subtitle="Measured from deduped trace_ai.steps runtime records."
+          data={r.agentRuntime.data}
+          unit=" s"
+          color="blue"
+        />
+        <PerfBarChart
+          title={r.businessImpactScores.title}
+          subtitle="Presentation scores based on current prototype capability and expected customer value."
+          data={r.businessImpactScores.data}
+          color="green"
+        />
+      </div>
+ 
+      <PerfGroupedBarChart
+        title={r.workflowSavings.title}
+        subtitle="Static estimated values for business-impact storytelling."
+        data={r.workflowSavings.data}
+        seriesA={{ key: "manual", label: "Manual baseline" }}
+        seriesB={{ key: "medtrace", label: "MedTrace AI target" }}
+      />
+ 
+      <PerfGroupedBarChart
+        title={r.llmTokens.title}
+        subtitle="Measured from deduped runtime trace_ai.llm_calls."
+        data={r.llmTokens.data}
+        seriesA={{ key: "prompt", label: "Avg prompt tokens" }}
+        seriesB={{ key: "completion", label: "Avg completion tokens" }}
+      />
+ 
+      <div className="two-col">
+        <PerfBarChart
+          title={r.cveSeverity.title}
+          subtitle="Measured from cybersecurity_scan_DEV-PULSE-OX.json."
+          data={r.cveSeverity.data}
+          color="red"
+        />
+        <PerfBarChart
+          title={r.graphComposition.title}
+          subtitle="Measured from local graph node labels."
+          data={r.graphComposition.data}
+          color="gold"
+        />
+      </div>
+ 
+      <Card>
+        <SectionTitle eyebrow="Slide-ready" title="Judge-Friendly Metrics Summary" />
+        <div className="summary-grid">
+          {r.judgeMetrics.map((row) => (
+            <div key={row.claim}>
+              <span>{row.claim}</span>
+              <strong>{row.value}</strong>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+
+
+// ============ COMPONENT CODE STARTS HERE ============
+ 
+const TEAM_MEMBERS = [
+  {
+    name: "Hariharanvignesh K",
+    hclRole: "Graduate Engineer Trainee",
+    hackathonRole: "Agent Framework Lead",
+    linkedin: "https://www.linkedin.com/in/hariharanvignesh2003/",
+    initials: "HK",
+  },
+  {
+    name: "Sivasankari G R",
+    hclRole: "Graduate Engineer Trainee",
+    hackathonRole: "Integration & Graph Lead",
+    linkedin: "https://www.linkedin.com/in/sivasankarigr/",
+    initials: "SG",
+  },
+  {
+    name: "Deepika E",
+    hclRole: "Graduate Engineer Trainee",
+    hackathonRole: "Frontend & UX Lead",
+    linkedin: "https://www.linkedin.com/in/deepika-eswaran/",
+    initials: "DE",
+  },
+  {
+    name: "Devadharshini T K",
+    hclRole: "Graduate Engineer Trainee",
+    hackathonRole: "Database Administrator",
+    linkedin: "https://www.linkedin.com/in/devadharshinitk/",
+    initials: "DT",
+  },
+];
+ 
+function TeamMemberCard({ member, index }) {
+  return (
+    <div className="team-card-flip" style={{ "--flip-delay": `${index * 90}ms` }}>
+      <div className="team-card-inner">
+        <div className="team-card-face team-card-front">
+          <div className="team-avatar">
+            <span>{member.initials}</span>
+          </div>
+          <h3>{member.name}</h3>
+          <p className="team-role-hackathon">{member.hackathonRole}</p>
+          <span className="team-flip-hint">
+            <Icon name="autorenew" />
+            Hover for details
+          </span>
+        </div>
+ 
+        <div className="team-card-face team-card-back">
+          <Icon name="badge" className="team-back-icon" />
+          <h3>{member.name}</h3>
+          <div className="team-back-meta">
+            <div>
+              <span>HCL Role</span>
+              <strong>{member.hclRole}</strong>
+            </div>
+            <div>
+              <span>Hackathon Role</span>
+              <strong>{member.hackathonRole}</strong>
+            </div>
+          </div>
+          <a
+            className="btn btn-primary team-linkedin-btn"
+            href={member.linkedin}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <Icon name="link" />
+            <span>View LinkedIn</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+ 
+function AboutUs() {
+  return (
+    <div className="page-grid">
+      <section className="hero-band">
+        <div>
+          <p className="eyebrow">The people behind MedTrace AI</p>
+          <h2>Meet the team.</h2>
+          <p>
+            Four Graduate Engineer Trainees at HCL, building a proactive compliance intelligence
+            platform for medical device manufacturers — end to end, in one hackathon.
+          </p>
+        </div>
+      </section>
+ 
+      <div className="team-card-grid">
+        {TEAM_MEMBERS.map((member, index) => (
+          <TeamMemberCard key={member.name} member={member} index={index} />
+        ))}
+      </div>
+    </div>
+  );
+}
+ 
+
+ 
 export default function App() {
   const [activePage, setActivePage] = useState("dashboard");
   const [theme, setTheme] = useState(() => localStorage.getItem("medtrace-theme") || "dark");
@@ -1661,11 +2298,48 @@ export default function App() {
   const runInvestigation = useCallback(async (complaintText, options = {}) => {
     setInvestigationRunning(true);
     setInvestigationError("");
+
     try {
       const body = cleanPayload({ complaint_text: complaintText, ...options });
       const response = await postJson(apiBase, "/documents/complaint-report", body);
-      setLastReport(response);
-      if (response?.summary?.device_id) setDeviceId(response.summary.device_id);
+
+      let rootCauseRows = [];
+      let rootCauseText = "";
+      let rootCauseRawSection = "";
+      let pdfExtractionError = "";
+
+      if (response?.download_url) {
+        try {
+          const pdfUrl = joinUrl(apiBase, response.download_url);
+          const extracted = await extractRootCauseFromPdf(pdfUrl);
+
+          rootCauseRows = extracted.rootCauseTable || [];
+          rootCauseText = extracted.rootCauseText || "";
+          rootCauseRawSection = extracted.rawRootCauseSection || "";
+        } catch (pdfErr) {
+          pdfExtractionError =
+            pdfErr.message || "Could not extract Root Cause Analysis from the generated PDF.";
+        }
+      } else {
+        pdfExtractionError = "Backend response did not include a PDF download URL.";
+      }
+
+      const enrichedResponse = {
+        ...response,
+        extracted_from_pdf: {
+          ...(response.extracted_from_pdf || {}),
+          root_cause_table: rootCauseRows,
+          root_cause_text: rootCauseText,
+          root_cause_raw_section: rootCauseRawSection,
+          extraction_error: pdfExtractionError,
+        },
+      };
+
+      setLastReport(enrichedResponse);
+
+      if (response?.summary?.device_id) {
+        setDeviceId(response.summary.device_id);
+      }
     } catch (err) {
       setInvestigationError(err.message);
     } finally {
@@ -1702,8 +2376,12 @@ export default function App() {
         return <AuditShadow {...props} />;
       case "cybersecurity":
         return <Cybersecurity {...props} />;
+      case "performance":
+          return <PerformanceAnalysis {...props} />;
       case "reports":
         return <Reports {...props} />;
+      case "about":
+          return <AboutUs {...props} />;
       default:
         return <Dashboard {...props} />;
     }

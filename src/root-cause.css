@@ -1,0 +1,111 @@
+.root-cause-panel {
+  overflow: hidden;
+}
+
+/* Card grid */
+.root-cause-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+}
+
+/* Default dark theme card */
+.root-cause-card {
+  --rc-card-bg: linear-gradient(135deg, rgba(18, 48, 74, 0.72), rgba(15, 23, 42, 0.9));
+  --rc-head-bg: rgba(18, 48, 74, 0.78);
+  --rc-border: rgba(148, 163, 184, 0.28);
+  --rc-label: rgba(203, 213, 225, 0.82);
+  --rc-title: #f8fafc;
+  --rc-text: #e5e7eb;
+  --rc-accent: #38d9f2;
+  --rc-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+
+  border: 1px solid var(--rc-border);
+  border-radius: 20px;
+  background: var(--rc-card-bg);
+  box-shadow: var(--rc-shadow);
+  overflow: hidden;
+}
+
+/* Light theme card colors */
+.app-shell[data-theme="light"] .root-cause-card,
+:root[data-theme="light"] .root-cause-card {
+  --rc-card-bg: linear-gradient(135deg, #ffffff, #f3f7fb);
+  --rc-head-bg: linear-gradient(135deg, #eaf4ff, #dbeafe);
+  --rc-border: rgba(37, 99, 235, 0.22);
+  --rc-label: #64748b;
+  --rc-title: #0f172a;
+  --rc-text: #1e293b;
+  --rc-accent: #0284c7;
+  --rc-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+}
+
+.root-cause-card-head {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--rc-border);
+  background: var(--rc-head-bg);
+}
+
+.root-cause-card-head div {
+  display: grid;
+  gap: 4px;
+}
+
+.root-cause-card-head span,
+.root-cause-field span {
+  color: var(--rc-label);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.root-cause-card-head strong {
+  color: var(--rc-title);
+  font-size: 1.1rem;
+}
+
+.root-cause-probability {
+  min-width: 110px;
+  text-align: right;
+}
+
+.root-cause-probability strong {
+  color: var(--rc-accent);
+  font-size: 1.35rem;
+}
+
+.root-cause-card-body {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.root-cause-field {
+  display: grid;
+  gap: 8px;
+}
+
+.root-cause-field p {
+  margin: 0;
+  color: var(--rc-text);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.root-cause-fallback-text {
+  border: 1px solid rgba(212, 168, 47, 0.35);
+  border-radius: 16px;
+  padding: 16px;
+  background: rgba(212, 168, 47, 0.08);
+  line-height: 1.6;
+}
+
+.root-cause-fallback-text p {
+  margin: 0;
+  white-space: pre-wrap;
+}
