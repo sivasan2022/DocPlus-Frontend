@@ -72,23 +72,6 @@ http://127.0.0.1:5173
 
 If Vite chooses another port because `5173` is busy, use the printed URL.
 
-## Backend Setup
-
-Start the backend from the backend folder in a separate terminal:
-
-```powershell
-cd "C:\Users\DELL\OneDrive\Attachments\DocPlus\DocPlus-Backend-main"
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Then confirm the backend is reachable:
-
-```text
-http://127.0.0.1:8000/health
-```
 
 ## Environment Configuration
 
